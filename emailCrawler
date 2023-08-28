@@ -1,0 +1,82 @@
+// Constants for easy column modification
+const emailColumn = 'J';
+const fromColumn = 'H';
+const titleColumn = 'I';
+
+function getGmailEmails() {
+  // Gets All Unread emails Under the Label TokenEx Notifications
+  var threads = GmailApp.search('label:"TokenEx Notifications" is:Unread');
+
+  // Sets up Sheet Variables
+  var spreadSheetId='18DalrWpGJBUheVVDmB01mWyLBnCFADxtGecaZJDRgtM'; // Spread Sheet Id for Daily TokenEx Tracking 2023
+  var sheetname = 'Master'; 
+  var ss = SpreadsheetApp.openById(spreadSheetId); // This is the Daily TokenEx Tracking 2023 spreadsheet
+  var timezone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(); 
+  var sheet = ss.getSheetByName(sheetname); // This is the Master sheet
+
+  // Delete original Backup and Create new Backup
+  ss.deleteSheet(ss.getSheetByName('Backup'));
+  sheet.copyTo(ss).setName('Backup');
+
+  // For each Email Thread
+  for(var i = 0; i < threads.length; i++){
+    // Get all messages in the thread and Mark the thread as read
+    var messages = threads[i].getMessages();
+    threads[i].markRead();
+
+    //For each message in the Given Thread
+    for (var j = 0; j < messages.length; j++){
+      message = messages[j];
+
+      // Get date, subject, sender and email content of that email
+      var dateTime = Utilities.formatDate(message.getDate(), timezone, "yyyy-MM-dd");
+      var subjectText = message.getSubject();
+      var fromSend = message.getFrom();
+      var bodyContent = message.getPlainBody();
+      
+      // Remove Footnotes and unwanted information at the end of the email
+      if(bodyContent.indexOf("--") > -1){
+        bodyContent = bodyContent.substring(0, bodyContent.indexOf("--"));
+      }
+
+      // Trim Email of extra white space and new line characters
+      bodyContent = bodyContent.trim().replace(/\s(?=\s)/g,'');
+
+      // Get Row Count of The sheet
+      var rowCount = sheet.getLastRow() + 1;
+      
+      // Set up spreadsheet formulas
+      var charityFormula = '=MID(' + fromColumn + rowCount + ', SEARCH("via Tokenex", ' + fromColumn + rowCount + ') + 11, FIND(" <", ' + fromColumn + rowCount + ') - (SEARCH("via Tokenex", ' + fromColumn + rowCount + ') + 12))';
+      var fileNameFormula = '=MID(' + emailColumn + rowCount + ', FIND("File Name: ", ' + emailColumn + rowCount + ') + 11, FIND("Action:", ' + emailColumn + rowCount + ') - (FIND("File Name: ", ' + emailColumn + rowCount + ') + 12))';
+      var successFormula = '=regexmatch(' + titleColumn + rowCount + ',"File Processed successfully")';
+      var recordsFormula = '=value(MID(' + emailColumn + rowCount + ', FIND("Record Count: ", ' + emailColumn + rowCount + ') + 14, FIND("Error Count: ", ' + emailColumn + rowCount + ') - (FIND("Record Count: ", ' + emailColumn + rowCount + ') + 15)))';
+      var errorsFormula = '=value(RIGHT(' + emailColumn + rowCount + ', Len(' + emailColumn + rowCount + ')-FIND("Error Count: ", ' + emailColumn + rowCount + ') - 12))';
+      var actionFormula = '=if(and(ne(D' + rowCount + ', E' + rowCount + '), ne(E' + rowCount + ', 0)), "Potential Error", "")';
+
+      // If the email is From TokenEd Notifications, Append gathered Information to the sheet
+      if(fromSend.indexOf("TokenEx Notifications") > -1){
+          sheet.appendRow([charityFormula, fileNameFormula, successFormula, recordsFormula, errorsFormula, actionFormula, dateTime, fromSend, subjectText, bodyContent])
+      };
+    }
+  }
+
+  // Sorts Sheet by date
+  var range = sheet.getRange("A2:K"); // Replace with your desired range
+  range.sort({ column: 7, ascending: false });
+  var formulasRange = sheet.getRange("A2:F"); // Same range as before
+  formulasRange.copyTo(formulasRange, { contentsOnly: false, formatOnly: true });
+  formulasRange.copyTo(formulasRange, { contentsOnly: false, formatOnly: false });
+
+  // var columnsToCompare = [6, 7, 8, 9]; // Compare duplicates based on columns G H I J
+  // var compareCaseSensitive = false; // Perform a case-insensitive comparison
+  
+  range.removeDuplicates();
+}
+
+// Creates UI for manual triggering
+function onOpen(e){
+  SpreadsheetApp.getUi()
+  .createMenu('TokenEx Emails')
+  .addItem('Update Table', 'getGmailEmails')
+  .addToUi();
+}
